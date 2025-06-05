@@ -1,13 +1,14 @@
-<!-- telegram_miniapp.html - MVP Telegram Mini‑App for course navigation (Epic‑Gold style)
-     Deploy on any static host (GitHub Pages, Vercel) and register in @BotFather > /setdomain
-     Uses Telegram Web App SDK https://core.telegram.org/bots/webapps
+<!-- telegram_miniapp.html — FULL REWRITE (Epic-Gold, dynamic via Google Sheets API)
+     ▸ Вставьте данные в блоке CONFIG (API_URL, CHANNEL)
+     ▸ Размещайте файл как index.html на GitHub Pages
+     ▸ Apps Script doGet:  …/exec  → отдаёт JSON (categories | lessons?cat=ID)
 -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Navigation</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Навигация</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -17,126 +18,89 @@
       --card-bg: #11273f;
       --text: #f9f9f9;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Inter", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
-    header {
-      padding: 1rem;
-      text-align: center;
-      font-size: 1.5rem;
-      font-family: "Cinzel", serif;
-      color: var(--gold);
-    }
-
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:"Inter",sans-serif;background:var(--bg);color:var(--text)}
+    header{padding:1rem;text-align:center;font-family:"Cinzel",serif;font-size:1.7rem;color:var(--gold)}
+    #view{padding-bottom:2rem}
     /* Category grid */
-    #categories {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px,1fr));
-      gap: 0.75rem;
-      padding: 1rem;
-    }
-    .cat {
-      position: relative;
-      background: linear-gradient(145deg,var(--card-bg) 0%,#001e41 100%);
-      border: 2px solid var(--gold-dark);
-      border-radius: 12px;
-      aspect-ratio: 1/1;
-      display: flex;
-      align-items: flex-end;
-      padding: 0.5rem;
-      overflow: hidden;
-      cursor: pointer;
-    }
-    .cat span {
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
-    .badge {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      background: var(--gold);
-      color: var(--bg);
-      border-radius: 50%;
-      padding: 0.2rem 0.45rem;
-      font-size: 0.75rem;
-      font-weight: 700;
-    }
-
+    #catGrid{display:grid;gap:.8rem;padding:1rem;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+    .cat{position:relative;background:linear-gradient(145deg,var(--card-bg)0%,#001e41 100%);border:2px solid var(--gold-dark);border-radius:12px;aspect-ratio:1/1;display:flex;align-items:flex-end;padding:.6rem;cursor:pointer;overflow:hidden}
+    .cat span{font-size:.9rem;font-weight:600}
+    .thumb{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.25}
+    .badge{position:absolute;top:6px;right:6px;background:var(--gold);color:var(--bg);border-radius:50%;padding:.17rem .45rem;font-size:.75rem;font-weight:700}
     /* Lesson list */
-    #lessons { padding: 1rem; }
-    .lesson {
-      background: var(--card-bg);
-      border: 1px solid var(--gold-dark);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 0.75rem;
-    }
-    .lesson h4 { margin: 0 0 0.25rem 0; font-size: 1rem; }
-    .progress-bar {
-      height: 5px;
-      background: var(--bg);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-    .progress-bar div { height: 100%; background: var(--gold); width: 0%; }
+    #lessonWrap{padding:1rem;display:flex;flex-direction:column;gap:.8rem}
+    .lesson{background:var(--card-bg);border:1px solid var(--gold-dark);border-radius:8px;display:flex;gap:.75rem;padding:.75rem;cursor:pointer}
+    .lesson .img{width:80px;aspect-ratio:16/9;background:#0005 url('') center/cover;border-radius:6px;flex-shrink:0}
+    .lesson h4{font-size:1rem;margin-bottom:.25rem}
+    .length{font-size:.75rem;color:var(--gold)}
+    .back{background:none;border:none;color:var(--gold);font-size:1.2rem;margin-right:.5rem}
   </style>
 </head>
 <body>
-  <header>Навигация</header>
+  <header id="title">Навигация</header>
   <main id="view">
-    <section id="categories" class="grid"></section>
+    <section id="catGrid"></section>
   </main>
 
-  <script>
-    const tg = window.Telegram?.WebApp;
-    tg?.expand();
+<script>
+/***** CONFIG *****************************************************************/
+const API_URL   = 'https://script.google.com/macros/s/AKfycbz0ADSXE_NN_1zR_5jL78627TCCChVY78Wypvv9QxlaZiC6XILzHdcF3C7PffF729gg/exec'; // <-- ВСТАВЬТЕ!
+const CHANNEL   = '-1002491708993';        // <-- имя канала без @ (для fallback)
+/*******************************************************************************/
+const tg = window.Telegram?.WebApp; tg?.expand();
 
-    // Dummy data – replace fetches with backend endpoints
-    const data = {
-      categories: [
-        {id:"offers", title:"Офферы", items:27},
-        {id:"keys", title:"Ключи", items:34},
-        {id:"bans", title:"Баны", items:12},
-        {id:"breakdowns", title:"Разборы", items:8}
-      ],
-      lessons: {
-        offers:[{id:1,title:"Security Jobs DE",progress:0},{id:2,title:"Scooter CZ",progress:50}],
-        keys:[{id:10,title:"Tier‑1 LSO structure",progress:0}],
-        bans:[{id:20,title:"Meta policy update May 2025",progress:100}]
-      }
-    };
+// Initial load ----------------------------------------------------------------
+loadCategories();
 
-    // Render categories grid
-    const catEl = document.getElementById("categories");
-    data.categories.forEach(c=>{
-      const box=document.createElement("div");box.className="cat";box.dataset.id=c.id;
-      box.innerHTML=`<span>${c.title}</span><div class="badge">${c.items}</div>`;
-      box.onclick=()=>openCategory(c.id,c.title);
-      catEl.appendChild(box);
-    });
+async function loadCategories(){
+  try{
+    const cats = await fetch(API_URL).then(r=>r.json());
+    renderCategories(cats);
+  }catch(err){console.error(err);alert('Ошибка загрузки категорий');}
+}
 
-    function openCategory(id,title){
-      document.getElementById("view").innerHTML=`<header style="padding:0 1rem 1rem 1rem"><button onclick="back()" style="background:none;border:none;color:var(--gold);font-size:1.2rem">←</button> ${title}</header><section id='lessons'></section>`;
-      const wrap=document.getElementById("lessons");
-      (data.lessons[id]||[]).forEach(l=>{
-        const card=document.createElement("div");card.className="lesson";
-        card.innerHTML=`<h4>${l.title}</h4><div class='progress-bar'><div style='width:${l.progress}%'></div></div>`;
-        card.onclick=()=> openLesson(l.id,id);
-        wrap.appendChild(card);
-      });
-    }
+function renderCategories(arr){
+  const grid=document.getElementById('catGrid');
+  grid.innerHTML='';
+  arr.forEach(c=>{
+    const box=document.createElement('div');box.className='cat';box.dataset.id=c.id;
+    box.innerHTML=`<div class="thumb" style="background-image:url('${c.thumb||''}')"></div>
+                   <span>${c.title}</span>
+                   <div class="badge">${c.items||0}</div>`;
+    box.onclick=()=>openCategory(c.id,c.title);
+    grid.appendChild(box);
+  });
+}
 
-    function openLesson(lessonId,catId){
-      tg?.openTelegramLink(`https://t.me/your_channel/${lessonId}`);
-      // Here you could also mark progress via backend call
-    }
+// Category click -------------------------------------------------------------
+async function openCategory(id,title){
+  document.getElementById('title').innerHTML=`<button class='back' onclick='back()'>←</button>${title}`;
+  document.getElementById('view').innerHTML='<section id="lessonWrap"></section>';
+  try{
+    const lessons = await fetch(`${API_URL}?cat=${encodeURIComponent(id)}`).then(r=>r.json());
+    renderLessons(lessons);
+  }catch(err){console.error(err);alert('Ошибка загрузки уроков');}
+}
 
-    function back(){ location.reload(); }
-  </script>
+function renderLessons(arr){
+  const wrap=document.getElementById('lessonWrap');
+  arr.forEach(l=>{
+    const card=document.createElement('div');card.className='lesson';
+    card.innerHTML=`<div class='img' style='background-image:url("${l.thumb||''}")'></div>
+                    <div class='txt'><h4>${l.title}</h4>
+                    <div class='length'>${l.length||''}</div></div>`;
+    card.onclick=()=>openLesson(l.url||`https://t.me/${CHANNEL}/${l.id}`);
+    wrap.appendChild(card);
+  });
+}
+
+function openLesson(url){
+  tg?.openTelegramLink(url);
+  // Здесь можно отправить POST в API для прогресса
+}
+
+function back(){ location.reload(); }
+</script>
 </body>
 </html>
